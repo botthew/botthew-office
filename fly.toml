@@ -5,7 +5,6 @@ primary_region = "ord"
 
 [env]
   PORT = "3000"
-  AUTH_PASSWORD = "${AUTH_PASSWORD}"
 
 [http_service]
   internal_port = 3000
