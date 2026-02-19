@@ -468,22 +468,39 @@
 
         // Initialize
         function init() {
+            fetchState();
             renderAgents();
+            updateStats();
             connectSSE();
             populateAgentSelect();
+            simulateActivity();
             document.getElementById('assignTaskBtn').addEventListener('click', openModal);
             document.getElementById('taskForm').addEventListener('submit', handleTaskSubmit);
+        }
+        
+        // Fetch initial state
+        async function fetchState() {
+            try {
+                const response = await fetch('/api/agents');
+                if (response.ok) {
+                    agentState = await response.json();
+                    renderAgents();
+                    updateStats();
+                }
+            } catch (error) {
+                console.error('Error fetching state:', error);
+            }
         }
 
         function renderAgents() {
             const grid = document.getElementById('agentsGrid');
             grid.innerHTML = AGENTS.map(agent => `
-                <div class="agent-card" onclick="selectAgent('${agent}')">
+                <div class="agent-card" onclick="selectAgent('${agent}')" data-agent="${agent}">
                     <div class="agent-name">${agent}</div>
                     <div class="agent-status">
                         <span>Status:</span>
-                        <span class="status-badge status-${(agentState[agent]?.status || 'idle')}">
-                            ${(agentState[agent]?.status || 'idle').toUpperCase()}
+                        <span class="status-badge status-${(agentState[agent]?.status || 'online')}">
+                            ${(agentState[agent]?.status || 'online').toUpperCase()}
                         </span>
                     </div>
                     <div class="agent-stats">
@@ -500,7 +517,7 @@
                         </div>
                     </div>
                     <div class="agent-screen">
-                        <div>🟢 PROCESSING...</div>
+                        <div class="agent-screen-content">🟢 ACTIVE</div>
                     </div>
                 </div>
             `).join('');
@@ -520,11 +537,11 @@
 
         function connectSSE() {
             const eventSource = new EventSource('/api/events');
-
+            
             eventSource.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
-
+                    
                     if (message.type === 'state') {
                         agentState = message.agents;
                         renderAgents();
@@ -544,12 +561,38 @@
                     console.error('SSE parse error:', e);
                 }
             };
-
+            
+            // Reconnect on close
             eventSource.onerror = () => {
-                console.error('SSE connection error');
+                console.log('SSE disconnected, reconnecting...');
                 eventSource.close();
-                setTimeout(connectSSE, 5000);
+                setTimeout(connectSSE, 3000);
             };
+        }
+        
+        // Simulate live activity for demo purposes
+        function simulateActivity() {
+            const actions = [
+                'Compiling...',
+                'Running tests...',
+                'Fetching data...',
+                'Analyzing logs...',
+                'Optimizing code...',
+                'Generating assets...',
+                'Writing documentation...',
+                'Scanning security...'
+            ];
+            
+            setInterval(() => {
+                // Randomly update an agent's screen
+                const randomAgent = AGENTS[Math.floor(Math.random() * AGENTS.length)];
+                const randomAction = actions[Math.floor(Math.random() * actions.length)];
+                
+                const screenEl = document.querySelector(`[data-agent="${randomAgent}"] .agent-screen-content`);
+                if (screenEl) {
+                    screenEl.textContent = `⚡ ${randomAction}`;
+                }
+            }, 2000);
         }
 
         function addTimelineItem(task) {
