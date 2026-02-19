@@ -2,7 +2,6 @@ app = "botthew-office"
 primary_region = "ord"
 
 [build]
-  image = "office-app"
 
 [env]
   PORT = "3000"
