@@ -8,8 +8,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// In-memory state
-const agentState = {
+// Real-time state (updated by Office Manager Agent)
+let agentState = {
   'Botthew': { status: 'online', tasks: 12, productivity: 85 },
   'DevBot': { status: 'online', tasks: 5, productivity: 92 },
   'ResearchBot': { status: 'online', tasks: 3, productivity: 88 },
@@ -19,6 +19,19 @@ const agentState = {
   'OpsBot': { status: 'online', tasks: 6, productivity: 87 },
   'DataBot': { status: 'online', tasks: 2, productivity: 90 },
   'SecurityBot': { status: 'online', tasks: 9, productivity: 93 }
+};
+
+// Agent metadata
+const agentInfo = {
+  'Botthew': { role: 'Lead Assistant', emoji: '🤖', color: '#00d9ff' },
+  'DevBot': { role: 'Lead Developer', emoji: '👨‍💻', color: '#00ff88' },
+  'ResearchBot': { role: 'Chief Investigator', emoji: '🔍', color: '#ffaa00' },
+  'WriterBot': { role: 'Content Strategist', emoji: '✍️', color: '#ff6b9d' },
+  'DesignBot': { role: 'Creative Director', emoji: '🎨', color: '#a855f7' },
+  'DebugBot': { role: 'Systems Detective', emoji: '🕵️', color: '#ef4444' },
+  'OpsBot': { role: 'Operations Lead', emoji: '⚙️', color: '#f59e0b' },
+  'DataBot': { role: 'Data Analyst', emoji: '📊', color: '#06b6d4' },
+  'SecurityBot': { role: 'Security Analyst', emoji: '🛡️', color: '#22c55e' }
 };
 
 const taskQueue = [];
@@ -53,9 +66,35 @@ const broadcast = (message) => {
   });
 };
 
-// Get all agents
+// Get all agents with metadata
 app.get('/api/agents', (req, res) => {
-  res.json(agentState);
+  const response = {};
+  for (const [name, state] of Object.entries(agentState)) {
+    response[name] = {
+      ...state,
+      ...agentInfo[name]
+    };
+  }
+  res.json(response);
+});
+
+// Update state from Office Manager Agent
+app.post('/api/update-state', (req, res) => {
+  const updates = req.body;
+  
+  for (const [name, state] of Object.entries(updates)) {
+    agentState[name] = {
+      ...agentState[name],
+      ...state
+    };
+  }
+  
+  broadcast({
+    type: 'state',
+    agents: agentState
+  });
+  
+  res.json({ success: true });
 });
 
 // Assign task to agent
@@ -90,6 +129,26 @@ app.post('/api/assign-task', (req, res) => {
   });
   
   res.json({ success: true, task: taskEntry });
+});
+
+// Notify task assigned from agent
+app.post('/api/task-assigned', (req, res) => {
+  const task = req.body;
+  
+  taskHistory.push(task);
+  taskQueue.push(task);
+  
+  if (agentState[task.agent]) {
+    agentState[task.agent].tasks = (agentState[task.agent].tasks || 0) + 1;
+  }
+  
+  broadcast({
+    type: 'task_assigned',
+    task,
+    agents: agentState
+  });
+  
+  res.json({ success: true });
 });
 
 // Update agent status
