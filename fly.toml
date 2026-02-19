@@ -1,0 +1,23 @@
+app = "botthew-office"
+primary_region = "ord"
+
+[build]
+  image = "office-app"
+
+[env]
+  PORT = "3000"
+
+[[env]]
+  name = "AUTH_PASSWORD"
+  value = "${AUTH_PASSWORD}"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[statics]]
+  guest_path = "/public"
+  url_path = "/static"
