@@ -3,23 +3,28 @@
 
 const http = require('http');
 
-// Load model config - Kimi K2 from config/models.json
+// Load model config
 let MODEL_CONFIG = {};
 try {
   MODEL_CONFIG = require('/data/.openclaw/workspace/config/models.json');
 } catch {
   MODEL_CONFIG = {
     models: {
-      'kimi2': { openrouter_id: 'moonshotai/kimi-k2', display_name: 'Kimi K2' },
-      'kimi2_5': { openrouter_id: 'moonshotai/kimi-k2.5', display_name: 'Kimi K2.5' },
-      'minimax2_1': { openrouter_id: 'minimax/minimax-m2.1', display_name: 'MiniMax M2.1' }
+      'kimi2': { openrouter: 'moonshotai/kimi-k2', display_name: 'Kimi K2' },
+      'kimi2_5': { openrouter: 'moonshotai/kimi-k2.5', display_name: 'Kimi K2.5' },
+      'minimax2_1': { openrouter: 'minimax/minimax-m2.1', display_name: 'MiniMax M2.1' }
     }
   };
 }
 
-const KIMI2_MODEL = 'moonshotai/kimi-k2'; // Kimi K2
-const KIMI2_5_MODEL = 'moonshotai/kimi-k2.5'; // Kimi K2.5
-const DEFAULT_MODEL = KIMI2_MODEL;
+// Model IDs in OpenClaw format: provider/model
+const MODELS = {
+  KIMI2: 'openrouter/moonshotai/kimi-k2',        // Kimi K2
+  KIMI2_5: 'openrouter/moonshotai/kimi-k2.5',     // Kimi K2.5
+  KIMI2_THINKING: 'openrouter/moonshotai/kimi-k2-thinking', // Kimi K2 Thinking
+  MINIMAX2_1: 'openrouter/minimax/minimax-m2.1',   // MiniMax M2.1
+  DEFAULT: 'openrouter/minimax/minimax-m2.1'       // Default: MiniMax M2.1
+};
 
 // Dashboard API endpoint (running on Fly.io)
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:3000';
@@ -38,9 +43,16 @@ const AGENT_ROLES = {
   'DebugBot': { role: 'Systems Detective', emoji: '🕵️', color: '#ef4444' },
   'OpsBot': { role: 'Operations Lead', emoji: '⚙️', color: '#f59e0b' },
   'DataBot': { role: 'Data Analyst', emoji: '📊', color: '#06b6d4' },
-  'SecurityBot': { role: 'Security Analyst', emoji: '🛡️', color: '#22c55e' },
-  'Botthew': { role: 'Lead Assistant', emoji: '🤖', color: '#00d9ff' }
+  'SecurityBot': { role: 'Security Analyst', emoji: '🛡️', color: '#22c55e' }
 };
+
+// Get model ID for a task type
+function getModelForTask(taskType) {
+  const defaults = MODEL_CONFIG.defaults || {};
+  const modelKey = defaults[taskType] || 'minimax2_1';
+  const model = MODEL_CONFIG.models?.[modelKey];
+  return model?.openrouter || MODELS.DEFAULT;
+}
 
 // Simulate real sessions (replace with actual OpenClaw session API calls)
 async function getActiveSessions() {
@@ -86,13 +98,17 @@ async function updateDashboard(sessions) {
 }
 
 // Assign task to agent
-async function assignTask(agentName, taskDescription) {
+async function assignTask(agentName, taskDescription, taskType = 'general') {
+  const model = getModelForTask(taskType);
+  console.log(`Using model: ${model} for task type: ${taskType}`);
+  
   const session = taskHistory.find(t => t.agent === agentName && t.status === 'pending');
   
   const task = {
     id: Date.now(),
     agent: agentName,
     task: taskDescription,
+    model: model,
     timestamp: new Date().toISOString(),
     status: 'assigned'
   };
@@ -100,7 +116,7 @@ async function assignTask(agentName, taskDescription) {
   taskHistory.push(task);
   
   // In production, this would call sessions_send
-  console.log(`Task assigned to ${agentName}: ${taskDescription}`);
+  console.log(`Task assigned to ${agentName}: ${taskDescription} (model: ${model})`);
   
   // Notify dashboard
   try {
@@ -148,6 +164,7 @@ function postJSON(url, data) {
 async function main() {
   console.log('🏢 Office Manager Agent started');
   console.log(`Dashboard URL: ${DASHBOARD_URL}`);
+  console.log(`Default Model: ${MODELS.DEFAULT}`);
   
   // Initial update
   const sessions = await getActiveSessions();
