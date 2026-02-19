@@ -1,7 +1,25 @@
 // Office Manager Agent - Controls the Mission Control Dashboard
-// This agent monitors real sub-agents and updates the dashboard
+// Uses Kimi K2 for intelligent decision making
 
 const http = require('http');
+
+// Load model config - Kimi K2 from config/models.json
+let MODEL_CONFIG = {};
+try {
+  MODEL_CONFIG = require('/data/.openclaw/workspace/config/models.json');
+} catch {
+  MODEL_CONFIG = {
+    models: {
+      'kimi2': { openrouter_id: 'moonshotai/kimi-k2', display_name: 'Kimi K2' },
+      'kimi2_5': { openrouter_id: 'moonshotai/kimi-k2.5', display_name: 'Kimi K2.5' },
+      'minimax2_1': { openrouter_id: 'minimax/minimax-m2.1', display_name: 'MiniMax M2.1' }
+    }
+  };
+}
+
+const KIMI2_MODEL = 'moonshotai/kimi-k2'; // Kimi K2
+const KIMI2_5_MODEL = 'moonshotai/kimi-k2.5'; // Kimi K2.5
+const DEFAULT_MODEL = KIMI2_MODEL;
 
 // Dashboard API endpoint (running on Fly.io)
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:3000';
