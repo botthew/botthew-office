@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "express": "^4.17.1",
-    "basic-auth": "^3.0.0"
+    "basic-auth": "^2.0.1"
   },
   "author": "",
   "license": "ISC"
