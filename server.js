@@ -5,6 +5,9 @@ const { execSync } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+console.log('Botthew Office Server starting...');
+console.log('Environment:', JSON.stringify(process.env, null, 2));
+
 // Middleware
 app.use(express.json({ limit: '1mb' })); // Limit JSON payload size
 
