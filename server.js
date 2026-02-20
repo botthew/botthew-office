@@ -1,12 +1,12 @@
 const express = require('express');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Real-time state (updated by Office Manager Agent)
 let agentState = {
@@ -40,31 +40,14 @@ const taskHistory = [];
 // SSE clients
 const sseClients = [];
 
-// SSE endpoint
-app.get('/api/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  
-  sseClients.push(res);
-  
-  // Send initial state
-  res.write(`data: ${JSON.stringify({ type: 'state', agents: agentState })}\n\n`);
-  
-  req.on('close', () => {
-    const index = sseClients.indexOf(res);
-    if (index > -1) {
-      sseClients.splice(index, 1);
-    }
-  });
-});
-
 // Broadcast updates to all SSE clients
 const broadcast = (message) => {
   sseClients.forEach(client => {
     client.write(`data: ${JSON.stringify(message)}\n\n`);
   });
 };
+
+// API routes (after variable definitions, before static files)
 
 // Get all agents with metadata
 app.get('/api/agents', (req, res) => {
@@ -95,6 +78,25 @@ app.post('/api/update-state', (req, res) => {
   });
   
   res.json({ success: true });
+});
+
+// SSE endpoint
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  sseClients.push(res);
+  
+  // Send initial state
+  res.write(`data: ${JSON.stringify({ type: 'state', agents: agentState })}\n\n`);
+  
+  req.on('close', () => {
+    const index = sseClients.indexOf(res);
+    if (index > -1) {
+      sseClients.splice(index, 1);
+    }
+  });
 });
 
 // Assign task to agent
@@ -184,6 +186,67 @@ app.get('/api/task-history', (req, res) => {
 app.get('/api/task-queue', (req, res) => {
   res.json(taskQueue);
 });
+
+// QMD Status endpoint
+app.get('/api/qmd-status', (req, res) => {
+  try {
+    // Run qmd status command
+    const qmdStatusOutput = execSync('/data/.npm-global/bin/qmd status', { encoding: 'utf8' });
+
+    // Parse qmd status output
+    let totalFilesIndexed = 0;
+    let totalVectors = 0;
+    let pendingEmbeddings = 0;
+    let lastUpdatedTime = null;
+
+    const lines = qmdStatusOutput.split('\n');
+    for (const line of lines) {
+      const filesMatch = line.match(/(\d+)\s*files? indexed/i);
+      const vectorsMatch = line.match(/(\d+)\s*vectors?/i);
+      const pendingMatch = line.match(/(\d+)\s*pending embeddings/i);
+      const updatedMatch = line.match(/last[ ]?updated[:\s]*([^\n]+)/i);
+
+      if (filesMatch) totalFilesIndexed = parseInt(filesMatch[1]);
+      if (vectorsMatch) totalVectors = parseInt(vectorsMatch[1]);
+      if (pendingMatch) pendingEmbeddings = parseInt(pendingMatch[1]);
+      if (updatedMatch) lastUpdatedTime = updatedMatch[1].trim();
+    }
+
+    // Get latest cron run for QMD (job ID: c595b958-2395-4099-97b5-ab357552007b)
+    let cronRunStatus = 'unknown';
+    let cronRunTime = null;
+
+    try {
+      const cronOutput = execSync('openclaw cron status c595b958-2395-4099-97b5-ab357552007b 2>/dev/null || echo "Cron check failed"', {
+        encoding: 'utf8',
+        timeout: 10000
+      });
+
+      const statusMatch = cronOutput.match(/status[:\s]*(\w+)/i);
+      const timeMatch = cronOutput.match(/last[ ]?run[:\s]*([^\n]+)/i) || cronOutput.match(/([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2})/);
+
+      if (statusMatch) cronRunStatus = statusMatch[1].toLowerCase();
+      if (timeMatch) cronRunTime = timeMatch[1].trim();
+    } catch (cronErr) {
+      cronRunStatus = 'unavailable';
+    }
+
+    res.json({
+      totalFilesIndexed,
+      totalVectors,
+      pendingEmbeddings,
+      lastUpdatedTime,
+      cronJobId: 'c595b958-2395-4099-97b5-ab357552007b',
+      latestCronRunStatus: cronRunStatus,
+      latestCronRunTime: cronRunTime
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get QMD status', details: error.message });
+  }
+});
+
+// Static files (after API routes)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Root redirect
 app.get('/', (req, res) => {
