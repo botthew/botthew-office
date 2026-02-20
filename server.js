@@ -6,19 +6,29 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // Limit JSON payload size
+
+// Security middleware - input validation
+const validateInput = (str, maxLength = 1000) => {
+  if (typeof str !== 'string') return null;
+  if (str.length > maxLength) return null;
+  // Block suspicious patterns
+  if (/[<>{}|&;`$\n]/.test(str)) return null;
+  return str.trim();
+};
 
 // Real-time state (updated by Office Manager Agent)
+// IMPORTANT: This will be updated by sync-cron.js with real agent data
 let agentState = {
-  'Botthew': { status: 'online', tasks: 12, productivity: 85 },
-  'DevBot': { status: 'online', tasks: 5, productivity: 92 },
-  'ResearchBot': { status: 'online', tasks: 3, productivity: 88 },
-  'WriterBot': { status: 'online', tasks: 7, productivity: 78 },
-  'DesignBot': { status: 'online', tasks: 8, productivity: 95 },
-  'DebugBot': { status: 'online', tasks: 4, productivity: 81 },
-  'OpsBot': { status: 'online', tasks: 6, productivity: 87 },
-  'DataBot': { status: 'online', tasks: 2, productivity: 90 },
-  'SecurityBot': { status: 'online', tasks: 9, productivity: 93 }
+  'Botthew': { status: 'offline', tasks: 0, productivity: 0 },
+  'DevBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'ResearchBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'WriterBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'DesignBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'DebugBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'OpsBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'DataBot': { status: 'offline', tasks: 0, productivity: 0 },
+  'SecurityBot': { status: 'offline', tasks: 0, productivity: 0 }
 };
 
 // Agent metadata
@@ -65,10 +75,29 @@ app.get('/api/agents', (req, res) => {
 app.post('/api/update-state', (req, res) => {
   const updates = req.body;
   
+  if (!updates || typeof updates !== 'object') {
+    return res.status(400).json({ error: 'Invalid update payload' });
+  }
+  
+  // Validate and sanitize each update
   for (const [name, state] of Object.entries(updates)) {
+    if (!agentState[name]) continue; // Skip unknown agents
+    
+    const safeState = {};
+    if (typeof state.status === 'string') {
+      const validStatuses = ['online', 'offline', 'idle', 'busy'];
+      safeState.status = validStatuses.includes(state.status.toLowerCase()) ? state.status : 'offline';
+    }
+    if (typeof state.tasks === 'number' && state.tasks >= 0 && state.tasks <= 1000) {
+      safeState.tasks = state.tasks;
+    }
+    if (typeof state.productivity === 'number' && state.productivity >= 0 && state.productivity <= 100) {
+      safeState.productivity = state.productivity;
+    }
+    
     agentState[name] = {
       ...agentState[name],
-      ...state
+      ...safeState
     };
   }
   
@@ -99,38 +128,10 @@ app.get('/api/events', (req, res) => {
   });
 });
 
-// Assign task to agent
+// Assign task to agent - DISABLED FOR SECURITY
+// This endpoint is disabled to prevent prompt injection attacks
 app.post('/api/assign-task', (req, res) => {
-  const { agent, task } = req.body;
-  
-  if (!agent || !task) {
-    return res.status(400).json({ error: 'Missing agent or task' });
-  }
-  
-  if (!agentState[agent]) {
-    return res.status(404).json({ error: 'Agent not found' });
-  }
-  
-  const taskEntry = {
-    id: Date.now(),
-    agent,
-    task,
-    timestamp: new Date().toISOString(),
-    status: 'assigned'
-  };
-  
-  taskQueue.push(taskEntry);
-  taskHistory.push(taskEntry);
-  
-  agentState[agent].tasks = (agentState[agent].tasks || 0) + 1;
-  
-  broadcast({
-    type: 'task_assigned',
-    task: taskEntry,
-    agents: agentState
-  });
-  
-  res.json({ success: true, task: taskEntry });
+  res.status(403).json({ error: 'This endpoint is disabled for security reasons' });
 });
 
 // Notify task assigned from agent
@@ -155,14 +156,21 @@ app.post('/api/task-assigned', (req, res) => {
 
 // Update agent status
 app.post('/api/agent-status', (req, res) => {
-  const { agent, status } = req.body;
+  const agent = validateInput(req.body.agent, 50);
+  const status = validateInput(req.body.status, 50);
   
   if (!agent || !status) {
-    return res.status(400).json({ error: 'Missing agent or status' });
+    return res.status(400).json({ error: 'Invalid agent or status' });
   }
   
   if (!agentState[agent]) {
     return res.status(404).json({ error: 'Agent not found' });
+  }
+  
+  // Only allow specific status values
+  const validStatuses = ['online', 'offline', 'idle', 'busy'];
+  if (!validStatuses.includes(status.toLowerCase())) {
+    return res.status(400).json({ error: 'Invalid status value' });
   }
   
   agentState[agent].status = status;
